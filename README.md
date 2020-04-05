@@ -8,6 +8,7 @@ Algorithm used are
 1) cross validation metrhods
 2) Random forest with tunning parameters
 3) boosting methods
+4) and data used for code
 
 All this is build using R langauage.
 
