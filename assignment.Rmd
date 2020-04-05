@@ -1,0 +1,882 @@
+---
+title: "Data Science Assignment"
+output:
+  html_document:
+    df_print: paged
+  word_document: default
+---
+
+```{r setup, include=FALSE}
+#install.packages('readxl')
+#install.packages("tidyr")
+#install.packages("caret")
+#install.packages("rpart")
+#install.packages("rpart.plot")
+#install.packages("rattle")
+#install.packages("dplyr")
+#install.packages("randomForest")
+#install.packages("randomForestExplainer")
+#install.packages("GGally")
+
+library(readxl)
+library(tidyr)
+library(stringr)
+library(tidyr)
+library(GGally)
+library(caret)
+library(rpart)
+library(rpart.plot)
+library(rattle)
+library(randomForest)
+library(tidyverse)
+
+```
+## Introduction To Data
+
+Kate, a manager at a financial institution has contacted you. She is asking for assistance in assessing the credit worthiness of future potential customers.  She has a data set of 780 past loan customer cases, with 14 attributes for each case, including attributes such as financial standing, reason for the loan, employment, demographic information, foreign national, years residence in the district and the outcome/label variable Credit Standing - classifying each case as either a good loan or bad loan.   
+The manager has 13 new customers, which she would like to know if she should consider them good or bad prospective loans. 
+
+## Data Details 
+
+Most of the attributes are self-explanatory; the name of some of the attributes are somewhat cumbersome but this is what you have been given; here are the further details of some of them: 
+
+Checking Acct -  What level of regular checking account does the customer have –No acct, 0balance, low (balance), high (balance) 
+
+Credit History –  All paid – no credit taken or all credit paid back duly, Bank Paid – All credit at this bank paid back   Current – Existing loan/credit paid back duly till now,  Critical – Risky account or other credits at other banks,   Delay – Delay in paying back credit/loan in the past 
+ 
+Months Acct –  The number of months the customer has an account with the bank.
+
+## Reading the files
+
+````{r, echo=TRUE}
+sheet1 <- read_xlsx("C:\\College\\01_Subjects\\DSA\\assignments\\assignment 1\\2.Credit_Risk6_final.xlsx", sheet = 1)
+sheet2 <- read_xlsx("C:\\College\\01_Subjects\\DSA\\assignments\\assignment 1\\2.Credit_Risk6_final.xlsx", sheet = 2)
+
+```
+
+### sheet1
+````{r, echo=FALSE}
+head(sheet1)
+```
+
+In sheet 1 (scoring data) we have 13 observation with 13 features.
+
+### sheet2
+```{r, echo=FALSE}
+head(sheet2)
+```
+Whereas In sheet 2 which is also our traning data, we have 780 observation and 14 column. Our column of interst is "credit_standing" on which we are going to put our analysis.
+
+assign data into different variable so we can manipulate the values without disturbing original data 
+```{r, echo=TRUE}
+data1 <-  sheet1
+data2 <-  sheet2
+```
+
+## Cleaning of Data
+
+Some models are having problem in reading column name if they have special character in it, so we have to change them 
+```{r, echo=TRUE}
+names(data2) =str_replace_all(names(data2) , c(" " = "_"))
+names(data2)
+```
+```{r, echo=FALSE}
+names(data1) =str_replace_all(names(data1) , c(" " = "_"))
+```
+also we are changing the name of 'Residence_Time_(In_current_district)' column to 'Residence_Time' because it has some special character like brackets
+
+```{r, echo=FALSE}
+data2 <- data2 %>% dplyr::rename( Residence_Time =  `Residence_Time_(In_current_district)` )
+names(data2[12])
+#data1 <- data1 %>% dplyr::rename( Residence_Time =  `Residence_Time_(In_current_district)` )
+
+```
+### Converting whole data into factors
+Sometimes our model accepts the values as factors so, to remove the warning from models, its better to convert data to factor
+```{r, echo=FALSE}
+data2[sapply(data2, is.character)] <- lapply(data2[sapply(data2, is.character)], 
+                                                       as.factor)
+str(data2)
+```
+```{r, echo=FALSE}
+data1[sapply(data1, is.character)] <- lapply(data1[sapply(data1, is.character)], 
+                                                     as.factor)
+```
+
+
+### To check null values in column
+```{r, echo=TRUE}
+as.vector(lapply(data2, function(x)sum(is.na(x))))
+```
+We have 33 null values in employment column , 6 in personal status, 5 in Housing. Either we can remove these values or we can Impute these values in the data. 5 or 6 null values can be replaced easily on the basis of remaining most occured values but its not a good choice to replace 33 values on remaining values so we can remove from data. For now we are removing all the rows which are having null values
+
+### Droping the null values
+```{r, echo=TRUE}
+data2 <- data2 %>% drop_na()
+data1 <- data1 %>% drop_na()
+```
+
+We have removed the null values from the data, now we can again check the data if there are null values or not.
+
+```{r, echo=TRUE}
+lapply(data2, function(x)sum(is.na(x)))
+```
+
+
+# (A) Exploratory Data Analysis (EDA)
+
+Gally library provide us the facility to draw all curve together w.r.t. each other.After that we can fatch the each curve using its index
+
+```{r, echo=TRUE}
+curve <- ggpairs(data2[2:14], 
+        mapping = ggplot2::aes(colour=Credit_Standing),title = "gpairs curve",
+        lower=list(continuous=wrap("smooth", colour="blue")))
+```
+
+curve is the object which will save the each graph in it by its index.
+after giving column name we can fetch the indivisual graph
+
+As we can see from the graph there are few outliers in both good and bad credit_standing in checking account columns. We can easily remove them from the data, it might be outliers for this column but can play important role in the whole data as a combined predictors.
+```{r, echo=TRUE}
+curve[11,13]
+```
+
+residence time column has also has 4 outliers 1 in bad and 3 in good category.
+```{r, echo=TRUE}
+curve[12,13]
+```
+
+In comparison to other features Age is more diversified, it means age feature has more range of data, also g=has more no of outliers. Like residence time feature, age also have more outliers in good category.
+
+### Trivariate curve
+
+
+As we have defined our label as color in ggpair so we can visualize every feature 
+In 2-d graph wrt its label. like we can see the relationship between 'credit_history' and 'age' on the basis of good and bad
+```{r, echo=TRUE}
+curve[2,12]
+```
+
+From this trivariate graph among  (1)age along x-axis, (2)credit_history along y-axis, and credit standing as color (orange color for Bad and green color for Good)
+Here one thing is to notice is those client who have credit_history = critical are only belongs to Bad credit_standing. There is only 1 client with id (400) who has credit_history = critical and belongs to Good category.
+
+
+
+# (B) Decision Tree Model
+
+We can change the label value from Good to 1 and Bad to 0, so that it will become more logical to our model to understand the numeric values.
+```{r, echo=TRUE}
+data2$Credit_Standing <- ifelse(data2$Credit_Standing == 'Good',1,0)
+head(data2$Credit_Standing,10)
+```
+
+Setting the seed to 252
+```{r, echo=TRUE}
+seed = 252
+set.seed(seed)
+```
+
+We are dividing data into train_data and test_data so that we can train the data and parallely we will be able to check the accuracy of the model using test_data
+We are using caret library to divide the data into train and test with the ratio of 75%.
+```{r, echo=TRUE}
+index <- createDataPartition(data2$Credit_Standing, p=0.8, list=FALSE)
+train_data <- data2[index,]
+dim(train_data)
+test_data <- data2[-index,]
+dim(test_data)
+```
+We are instructed to use decision tree to do our prediction therefore we are going to use rpart library to use import decision tree
+
+```{r, echo=TRUE}
+fit <- rpart(Credit_Standing~ .-Credit_Standing-ID, data = train_data, 
+             method = "class", parms= list(split= 'information'),
+             control = rpart.control(cp = .001,minsplit = 5,minbucket = 5,maxdepth = 10, xval = 10))
+```
+```{r, echo=TRUE}
+rpart.plot(fit,cex= .5, extra=6)
+fancyRpartPlot(fit, cex=.5)
+```
+
+### parameters which are used here are as follows: 
+
+method = class because it is my classification tree
+
+parms= list(split= 'information')) because we want information gain or we can give gini as well, we can give annova if problem is regression
+
+In control we have
+
+cp = 0.2 complexity parameter, used to give constaint over overfitting, it tells you, what is the quality of split. it is the no. by which splting the node will decrease the relative error, value below .001 will not give the split. Low value of cp can overfit our model.
+
+minsplit = 5 any node which has 5 no of observation will not go for further splitting
+
+minbucket = 5 if terminal node has 5 observation it will not go for further split
+
+maxdepth = 10 maximum depth of tree will not be higher than 10
+
+xval = 10 no of cross validation
+
+Note - here we are giving very low value of cp and other parameter to get full grown tree
+
+###  Tunning of model
+
+Now we will try to to prune the model
+rpart.plot gives you two functions 
+
+```{r, echo=TRUE}
+printcp(fit)
+plotcp(fit)
+```
+
+By looking at output of both parameter we can have the best value of cp
+print cp gives us tabular value and plotcp gives us plot
+after looking at the table of printcp we can say we have the lowest value of xerror = .58921 at cp = 0.0152144. But the standart way of selecting cp is get the minimim value of xerror and add its xstd value in it. Now select the maximum value of xerror which is less than this value.
+So in our case .58921 +0.0152144. =   0.632296 and now the maximum value of xerror which is less than  0.632296 is 0.62656 . for this respective value of cp is 0.0110650.
+
+### Now prune the model with best value of cp which is 0.0110650
+
+```{r, echo=TRUE}
+tree.fit <- prune(fit, cp =0.0110650)
+#is same as 
+fit <- rpart(Credit_Standing~ .-Credit_Standing, data = train_data, 
+             method = "class", parms= list(split= 'information'),
+             control = rpart.control(cp = 0.0044053,minsplit = 5,minbucket = 5,maxdepth = 10, xval = 10))
+```
+
+
+```{r, echo=TRUE}
+rpart.plot(tree.fit,cex= .5, extra=4)
+```
+
+### Explanation of tree graph
+
+value given above in box is majority class value
+below value in box are percentage of good and bad credit standing, majority
+class is given above the percentage 
+so first of all is our root node 1, where 38% are good and 62% are in bad category. the first split is on the basis of (critical_history = critical) is true, they all are bad credit standing, other will be further splitted
+Second node contains good credit-standing of 68% and bad is 32 %, it is splitted on the basis of (credit_history == Current.delay) is true or not, and goes on.
+
+### Check for the accuracy of model
+we can test accuracy of model on test data
+```{r, echo=TRUE}
+pred_rpart <- predict(fit,test_data, type="class")
+```
+type = class will give us output in class format either 0 or 1
+```{r, echo=TRUE}
+caret::confusionMatrix(pred_rpart, as.factor(test_data$Credit_Standing))
+```
+accuracy of model = 72.79
+
+Here, I found one best code to check which are the values going to the each node on stack overflow by MrFlick
+
+tree = trained model
+
+df = data frame used in modelling
+
+nodes= nodes in which you want to check data
+
+```{r, echo=TRUE}
+subset.rpart <- function (tree, df, nodes) {
+  if (!inherits(tree, "rpart")) 
+    stop("Not a legitimate \"rpart\" object")
+  stopifnot(nrow(df)==length(tree$where))
+  frame <- tree$frame
+  n <- row.names(frame)
+  node <- as.numeric(n)
+  
+  if (missing(nodes)) {
+    xy <- rpart:::rpartco(tree)
+    i <- identify(xy, n = 1L, plot = FALSE)
+    if(i> 0L) {
+      return( df[tree$where==i, ] )
+    } else {
+      return(df[0,])
+    }
+  }
+  else {
+    if (length(nodes <- rpart:::node.match(nodes, node)) == 0L) 
+      return(df[0,])
+    return ( df[tree$where %in% as.numeric(nodes), ] )
+  }
+}
+```
+
+So if we want to get the data which is going to node 2 is as follows
+
+```{r, echo=TRUE}
+subset.rpart(fit, train_data, 2)
+```
+At the end we can also get the summary of our model 
+summary(fit)
+
+# (C) Prediction for scoring data 
+
+Using this model we can predict the credit Standig for the Scoring data set 
+Before that we need to perform all the operation that we have performed on training data
+```{r, echo=TRUE}
+names(data1) =str_replace_all(names(data1) , c(" " = "_"))
+```
+Also we are changing the name of 'Residence_Time_(In_current_district)' column to 'Residence_Time' because it has some special character like brackets
+
+converting whole data into factors
+```{r, echo=TRUE}
+data1[sapply(data1, is.character)] <- lapply(data1[sapply(data1, is.character)], 
+                                             as.factor)
+str(data1)
+```
+To check null values in column
+```{r, echo=TRUE}
+lapply(data1, function(x)sum(is.na(x)))
+```
+Now we can use the old model we built for training our model 
+```{r, echo=TRUE}
+pred_rpart <- predict(fit,data1, type="class")
+pred_scoreing_data <- ifelse(pred_rpart == 1,'Good','Bad')
+data1$my_pred <- pred_scoreing_data
+```
+### Selecting 5 potential customers rows from data
+To show how our model is working, we are taking 5 clients with the id 787, 788, 790, 792, 793.
+
+![an image caption Source: decision tree for 5 selected clients](imge for rmd file/Potential_client.png)
+
+First of all, model checks whether our model has any client who has credit value is critical or not, if it is 'yes' then it will be classified directly "credit standing" as "Bad". So, here our client with
+Id -792 has credit history = critical so it will be "Bad".
+
+Remaining Id - 787, 788, 790, 793
+Here all remaining ids will go to no. Again our model will check for if credit history = current/delay. Ids 787, 790, 793 has current or delay as credit_history. So, it will again check for the next condition. And the id 788 doesn't have this value. It will again check for the next condition which is saving account = high/ medium or no account. Id 788 has nothing in it so it will again go to no. and it will be classified "credit standing" as a "Good".
+
+Remaining Id - 787, 790, 793
+remaining ids will check for the next condition which is employment = short. Id 793 has employment = short but ids 787 and 793 will go for another condition.
+so, for now, we are taking id 793 which has employment = short. id 793 again will check for residence time > 2, In our case it is 3 so it will again go for next condition like loan reason = business or education then account open, job type, what is the foreign national and finally it will check for if my residence time is greater than or equal to 3 . Our Id- 793 has residence time = 3 so it will be classified "credit standing" as "bad".
+
+Remaining Ids - 787, 790
+remaining Id will check for the next condition checking account is high or not. Id 787 has checking account= high. Id 787 will check for some more new condition according to our tree-like loan reasons = no or not. So, Id 787 will be classified "credit standing" as "Good", after checking all the conditions.
+
+Remaining Id 790
+Id 790 will check for another condition that is checking account = low. our Id has checking acco = no account so it will be classified "credit standing" as "Good".
+
+So, using our model we have reached to final result which is as follows-
+Id -792 = "Bad"
+Id -788 = "Good"
+Id -793 = "Bad"
+Id -787 = "Good"
+Id -790 = "Good"
+
+In this way our model is predicting all the values correctly for the following ids.
+
+# (D) Trying Two ensamble models  
+
+
+
+### as an ensamble method we are using random forest here
+
+here we are dividing the data into features and label 
+```{r, echo=TRUE}
+x <- train_data[,1:12]
+y <- train_data$Credit_Standing
+```
+
+Direct from the help page for the randomForest() function in R:
+  mtry: Number of variables randomly sampled as candidates at each split.
+ntree: Number of trees to grow.
+In caret only mtry parameter is available for tuning. because its effect on the final accuracy and that it must be found empirically for a dataset.
+We can choose the value of ntree whatever we want, upto some point it helps in incresing the accuracy.
+
+We will create a base model for comperison using some defaults parameters in range where mtry=floor(sqrt(ncol(x))) or mtry=3 and ntree=500.
+
+number = 10 which is no of folds
+repeats = 3 whcih tells us that it will be repeted by 3 times
+10 folds and 3 repetations will take time but it will reduce overfitting of model
+
+
+### 1 Create model with default paramters
+
+```{r, echo=TRUE}
+control <- trainControl(method="repeatedcv", number=10, repeats=3)
+seed <- 252
+metric <- "Accuracy"
+set.seed(seed)
+mtry <- sqrt(ncol(x))
+tunegrid <- expand.grid(.mtry=mtry)
+rf_default <- train(as.factor(Credit_Standing)~.-Credit_Standing, data=train_data, method="rf", metric=metric, tuneGrid=tunegrid, trControl=control)
+print(rf_default)
+```
+accuracy = 0.7469261 in initial
+
+Predicting values for testing set
+```{r, echo=TRUE}
+pred_rf_default <- predict(rf_default, test_data, mtry= 3)
+confusionMatrix(as.factor(pred_rf_default), as.factor(test_data$Credit_Standing))
+```
+Accuracy : 0.7415 
+
+### 2 Random Search
+
+In random search we will try to put some random values of mtry (search="random") in control param
+
+```{r, echo=TRUE}
+control <- trainControl(method="repeatedcv", number=10, repeats=3, search="random")
+set.seed(seed)
+metric <- "Accuracy"
+mtry <- sqrt(ncol(x))
+rf_random <- train(as.factor(Credit_Standing)~.-Credit_Standing, data=train_data, method="rf", metric=metric, tuneLength=15, trControl=control)
+print(rf_random)
+plot(rf_random)
+```
+
+Best accuracy is 0.7667008 at mtry = 33
+
+Accuracy on testing data
+
+```{r, echo=TRUE}
+pred_rf_random <- predict(rf_random, test_data, mtry= 33)
+confusionMatrix(as.factor(pred_rf_random), as.factor(test_data$Credit_Standing))
+```
+
+Accuracy : 0.7415
+
+
+### 3 grid search
+
+Another search that we have is grid.
+Grid is the combination of parameters and each axis defines a set of parameters to feed in algo.
+But here we are having only one value to tune so it will be a set of linear vector (mtry=c(1:15)).
+
+```{r, echo=TRUE}
+control <- trainControl(method="repeatedcv", number=10, repeats=3, search="grid")
+set.seed(seed)
+metric <- "Accuracy"
+tunegrid <- expand.grid(.mtry=c(1:15))
+rf_gridsearch <- train(as.factor(Credit_Standing)~.-Credit_Standing, data=train_data, method="rf", metric=metric, tuneGrid=tunegrid, trControl=control)
+print(rf_gridsearch)
+plot(rf_gridsearch)
+```
+
+Best accuracy is 0.7621709 at mtry = 15
+
+Accuracy on testing data
+
+```{r, echo=TRUE}
+pred_rf_gridsearch <- predict(rf_gridsearch, test_data, mtry= 15)
+confusionMatrix(as.factor(pred_rf_gridsearch), as.factor(test_data$Credit_Standing))
+```
+Accuracy : 0.7347
+
+### 4 Algorithm Tune (tuneRF)
+Some of algorithm provide method to tune its parameters like random forest we have tuneRF
+```{r, echo=TRUE}
+set.seed(seed)
+bestmtry <- tuneRF(x, as.factor(train_data$Credit_Standing), stepFactor=1.5, improve=1e-5, ntree=500)
+print(bestmtry)
+```
+The most accurate value for mtry is 2 with an OOBError of 0.2338983. But
+above in grid search result we have seen that for mtry = 2 we were getting only 0.7327719.
+But yes it is another method to tune the model
+
+### Boosting model (gredient boosting)
+
+```{r, echo=TRUE}
+library(gbm)
+set.seed(seed)
+model_boost = gbm(Credit_Standing~.-Credit_Standing,data = train_data, 
+                  distribution = "bernoulli",n.trees = 1000,
+                  shrinkage = 0.01, interaction.depth = 4)
+
+print(model_boost)
+summary(model_boost)
+```
+Tuning a gbm Model and Early Stopping
+```{r, echo=TRUE}
+model_boost = gbm(Credit_Standing~.-Credit_Standing,data = train_data, 
+                  distribution = "bernoulli",n.trees = 1000,
+                  shrinkage = 0.01, interaction.depth = 4,
+                  cv.folds = 3)
+
+ntree_opt_cv <- gbm.perf(model_boost, method = "cv")
+ntree_opt_oob <- gbm.perf(model_boost, method = "OOB")
+print(ntree_opt_cv)
+print(ntree_opt_oob)
+```
+Optimum number of trees as per the “OOB” and “cv” method
+
+ntree_opt_cv = 563
+
+ntree_opt_oob = 231
+
+Accuracy on testing data
+
+```{r, echo=TRUE}
+prediction <-  predict(model_boost, test_data,
+                       n.trees = ntree_opt_cv,
+                       type = "response")
+
+predictions <-  as.factor(ifelse(prediction>.5,1,0))
+confusionMatrix(predictions,as.factor(test_data$Credit_Standing))
+```
+Accuracy : 0.7211 
+
+
+# (E) Outliers
+To find the pattern which may be recorded as wrong , our first approch is we can check the actual label with our predicted values if there are are wrong prediction , there may be a case that data is worng so we can say that there must be some problem with data that is why we are getting wrong prediction.
+
+Here we are using our decision tree model for the prediction.
+
+```{r, echo=TRUE}
+prediction = predict(fit, data2, type = "class")
+pred <-  as.data.frame(prediction)
+index <- which(pred$prediction == data2$Credit_Standing)
+data4 <- data2[-index,]
+data4$ID
+```
+
+
+After getting the rows where we are getting wrong prediction,, we are recording the IDs of the observation. So that we can further analyse the data which will work as a subset for us.
+
+After analysing the data, we came to know there are so many datapoints where all the features are same for an observation but the label which is written is different. It is clear that for the same features our prediction can not be different. Some observation we have observed are here-
+
+
+207= 715,	
+295= 700,	
+296= 699,	
+298= 309,	
+299= 698,	
+300= 577,	
+302= 562,	
+303= 502,	
+304= 501,	
+305= 498,	
+306= 496,	
+309= 298,	
+310= 291,	
+163= 729	
+
+
+ID which are mentioned here are having same features and different label.
+for example observation ID = 207 has same feature as ID= 715 but different label.
+
+One thing which we can notice here is The id on left hand side are consucutive.If we observe them with keen eyes we will find the rows are between 295 to 310. It is suspicious that during a particular time that this process performed very poorly and produced inaccurate results.
+
+we also observed here is there are multiple rows which are common here or repeated .
+
+```{r, echo=TRUE}
+data3 <- sheet2[duplicated(sheet2[2:14]),]
+head(data3)
+```
+
+79=	431,
+83=	430,
+129=	359,
+147=  427,
+175=	350,
+194=	426,
+218=	423,
+250=	528,
+274=	703,
+282=	333,
+490=	697,
+613=	663,
+247=	315,
+191=	387,
+307=	489,
+553=	719
+
+So here ID 79 and ID 431 has repetative data and so on.
+
+
+
+# (F) Information Gain
+
+Information gain is the propery by which we come to know how much information we can get from a feature on a given class.
+This method is used in decision tree to split the data so that maximum information can be achieved.
+Feature which has highest information gain will be splitted first.
+
+```{r, echo=TRUE}
+train_data <-  as.data.frame(train_data)
+```
+
+First of all we are trying to find the probability of 2nd column with respect to our label.
+
+```{r, echo=TRUE}
+prop.table(table(train_data[,2],train_data[,14]))
+```
+
+We have to repeate this procedure for all our features with respect to label. So we can convert it as a function and can pass the each feature as an argument.
+Also we are doing laplace smoothing by le-6, which will prevent probability to be 0.
+margin = 1 will find the probability across the row
+
+```{r, echo=TRUE}
+tabfun <- function(x) {prop.table(table(train_data[,x],train_data[,14]) + 1e-6, margin = 1)} 
+```
+
+tabfun function will return the probability of each feature in a row
+Now we will calculate the entropy - i.e. 
+
+-1 *probability of a false * log2( of this probability)
+
+Also, we need rowSums of this, i.e the row sums
+
+```{r, echo=TRUE}
+rowSums(-tabfun(5)*log2(tabfun(5)))
+```
+
+Next we need to multiply these by the proportion in each of these rows
+
+```{r, echo=TRUE}
+sum(prop.table(table(train_data$Savings_Acct))*rowSums(-tabfun(5)*log2(tabfun(5))))
+```
+Summing it all together we can convert it ino a function
+
+```{r, echo=TRUE}
+entopy_tab <- function(x){ 
+  tabfun <- prop.table(table(train_data[,x],train_data[,14]) + 1e-6, margin = 1)
+  sum(prop.table(table(train_data[,x]))*rowSums(-tabfun*log2(tabfun)))}
+```
+
+Checking for column no 3
+
+```{r, echo=TRUE}
+entopy_tab(3)
+```
+
+We will also need the column name to know on which column we are going to divide
+
+```{r, echo=TRUE}
+coln=colnames(train_data)[2:13]
+```
+
+We are sorting the entrophy from minimum to maximum and finding out the minimum value of entrophy with the column name.
+
+```{r, echo=TRUE}
+min_entrophy <- sort(sapply(coln,entopy_tab),decreasing = F)[1]
+```
+
+Decision Tree Algorithm choose the highest Information gain to split/construct a Decision Tree. 
+So we need to check all the feature in order to split the Tree.
+
+Information Gain
+
+```{r, echo=TRUE}
+IG = 1 - min_entrophy
+IG
+```
+
+So, we can say the first split will be on the column Credit_History which has a information gai of 0.2692683.
+
+# (G) Adaboost 
+
+What is Boosting?
+Boosting is a process that uses ensemble methods to create multiple decision trees to make it a strong classifier.
+In this process, we try to make different models by dividing training data into parts. Each data (fold) is fed into a different model and the error of one model is feed into the next model to optimize the model until we get the perfect output or best accuracy of model.
+AdaBoost is a type of Boosting technique. It was the first algorithm developed on the Boosting method for binary operations.
+
+What is AdaBoost?
+AdaBoost is also known by discrete AdaBoost because it is used for classification, not for regression.
+Basically it is used to increase the accuracy of any model by increasing the rate of by increasing the random chance of increasing the weight of the observation which predicted as wrong.
+Most commonly it is used with trees model of one level because of the simplicity of the model and better accuracy.
+
+Working of AdaBoost?
+AdaBoost uses weighted techniques to boost the model. First of all, we assign each observation a default weight which is equal to the 1/n. 
+Here the value of n is equal to total no. of observation present in the data.
+weight(xi) = 1/n
+
+xi = index of no of observation
+n = no. of observation
+
+in our case :
+n = 10
+so xi = 1/10= 0.1
+xi = 0.1
+
+week model is used for training the data, each model gives an output. AdaBoost supports the only classification so each model output results in either correct or wrong value. those values which are predicted wrong misclassification rate are calculated.
+Misclassification rate is generally given by
+
+error = (correct – N) / N
+
+where the error is the misclassification rate
+This can be expanded to use in large data with the following formula
+error = sum(w(i) * terror(i)) / sum(w)
+it is the sum of all the weight which are misclassified.
+In our case, 3 times we have predicted the wrong value so each time .1 will be added and the total error will become 0.3
+
+error = 0.1 +0.1 +0.1 = 0.3
+
+after this, a stage value is calculated which is also called the learning rate of the boosting model given by the following formula
+
+alpha = In((1-error)/error)
+
+here our error value is 0.3 so
+ alpha = 1/2 In((1-.3)/.3)
+		= 0.42364893
+
+this value of alpha is used to update the value of weight. In(log) is the natural logarithm here. and error is the sum of error calculated above.
+our final approach is to update the weight according to correct and wrong classification.
+We update the weight for the second stage according to a given formula which is given as follows.
+
+w = w * exp(-stage * terror)
+
+stage = alpha calculated for stage 1
+w = initial weight 
+
+Here a new term terror is an error made by the classifier in predicting the value. If predicted value is equal to actual value then terror = 1 otherwise it will be -1.
+terror = 1, if (y=p)
+terror = -1, if (y!=p)
+
+where p is the prediction made and y is the output variable
+
+In this way, we decrease the weight of the observation where the model classify the correct value and increases the value where it classifies the wrong prediction.
+These weights are further sent to the next tree or next week's classifiers.
+
+AdaBoost Ensamble method:
+- these all models are added one after another or sequentially. The error of one model is fed to another model to train again. Once there is no further improvement in the values or preset of the model are done, we are left with all models and their alpha values that are stage value.
+
+
+Actual label values are
+```{r, echo=TRUE}
+y=c(0, 1, 1, 0, 1, 1, 0, 1, 0, 0)
+```
+default weight
+```{r, echo=TRUE}
+W1=rep(1/10, 10)
+```
+Output predicted by first tree
+```{r, echo=TRUE}
+h1=c(1, 0, 0, 0, 1, 1, 0, 1, 0, 0)
+```
+Sum of the error at first stage
+```{r, echo=TRUE}
+epsilon_1=sum(W1[!(y==h1)])
+epsilon_1
+```
+First stage learning rate
+```{r, echo=TRUE}
+alpha_1=0.5*log((1-epsilon_1)/epsilon_1)
+alpha_1
+```
+Calculating updated weight for next iteration 
+```{r, echo=TRUE}
+W2=c()
+for (i in seq(1:length(y))){
+  if (h1[i]==y[i]) {F[i]=exp(-alpha_1)   } else {F[i]=exp(alpha_1)}
+  W2[i]=W1[i]*F[i]
+}
+F
+
+W2=W2/sum(W2)
+W2
+```
+Output predicted by second tree
+```{r, echo=TRUE}
+h2=c(0, 1, 1, 1, 0, 0, 0, 1, 0, 0)
+```
+Sum of the error at second stage
+```{r, echo=TRUE}
+epsilon_2=sum(W2[!(y==h2)])
+epsilon_2
+```
+
+Second stage learning rate
+```{r, echo=TRUE}
+alpha_2=0.5*log((1-epsilon_2)/epsilon_2)
+alpha_2
+```
+Calculating updated weight for next iteration 
+```{r, echo=TRUE}
+W3=c()
+for (i in seq(1:length(y))){
+  if (h2[i]==y[i]) {F[i]=exp(-alpha_2)   } else {F[i]=exp(alpha_2)}
+  W3[i]=W2[i]*F[i]
+}
+F
+
+W3=W3/sum(W3)
+W3
+```
+Output predicted by third tree
+```{r, echo=TRUE}
+h3=c(1, 1, 1, 1, 0, 1, 0, 1, 0, 0)
+```
+Sum of the error at third stage
+```{r, echo=TRUE}
+epsilon_3=sum(W3[!(y==h3)])
+epsilon_3
+```
+
+Third stage learning rate
+```{r, echo=TRUE}
+alpha_3=0.5*log((1-epsilon_3)/epsilon_3)
+alpha_3
+```
+
+Predicting output:
+- predictions are calculated by averaging the values of weight at every stage. Like for an observation 5 models predict different values like -1,-1,1,-1,1. After looking at the value by voting we can say the output will be -1. but in case their stage values are suppose .2,.3,.7,.2,.5 . the average sum of the values will be
+
+o/p = ((-1*.2)+ (-1*.3)+(1*.7)+ (-1*.2)+ (1*.5))/5
+o/p = (-0.2 - 0.3 + 0.7 - 0.2 + 0.5)/5
+	= 0.5/5
+	= 0.1
+	
+So, here output is .1, which is positive and will result in 1. It is a contrast of the value which is found by normal voting.
+
+This is all about how the Adaboost woorks. We can explain it more by using code.
+
+
+Calculating the final Output
+ ```{r, echo=TRUE}
+h_final=sign(alpha_1*h1+alpha_2*h2+alpha_3*h3)
+h_final
+```
+Making a confusion matrix
+Using table function we can create the confusion matrix.
+```{r, echo=TRUE}
+matrix_out <- table(y,h_final)
+accuracy_out <-  (matrix_out[1,1]+matrix_out[2,2])/length(y)
+accuracy_out = accuracy_out*100
+accuracy_out
+```
+Here, we are getting the 80% accuracy of model. Which is quite good.
+
+# (H) ROC CURVE
+
+Our best model is decision tree because its performing well on both train and test data
+
+```{r, echo=TRUE}
+fit <- rpart(Credit_Standing~ .-Credit_Standing, data = train_data, 
+             method = 'anova', parms= list(split= 'information'),
+             control = rpart.control(cp = 0.0044053,minsplit = 5,minbucket = 5,maxdepth = 10, xval = 10))
+
+test_y <- predict(fit, train_data)
+
+```
+
+In machine learning, the performance og=f the model is tested by its accuracy. When it comes to classification we have confusion matrix and ROC corve. ROC curves tell you how your model is capable of distinguish between class at different threshold.
+ROC is plotted between TPR(sensitivity) along y-axis and FPR(1-specificity) along x-axis.
+
+TPR (sensitivity)= TP/TP+FN 
+specificity = TN/TN+FP
+FPR = (1-specificity) = FP/TN+FP
+
+defining two vector TPR and FPR to save vakues at different threshold
+```{r, echo=TRUE}
+tpr = character()
+fpr = character()
+for (i in seq(0,1,.005)){
+    tpr <- c(tpr, sum( test_y>= i & train_data$Credit_Standing ==1) / length(train_data$Credit_Standing ==1))
+    fpr <- c(fpr, sum( test_y>= i & train_data$Credit_Standing ==0) / length(train_data$Credit_Standing ==0))
+}
+
+plot(fpr, tpr, main = "Manually drawn curve")
+```
+
+
+Ploting the curve using library so we will be able to cross check if our graph is correct 
+
+```{r, echo=TRUE}
+library(ROCR)
+pred = prediction(test_y, train_data$Credit_Standing)
+perf = performance(pred,"tpr" ,"fpr")
+par(mfrow=c(1,2))
+plot(fpr, tpr, main = "Manually drawn curve", xlim= c(0.0, 0.5),ylim= c(0.0, 0.7))
+plot(perf, main = "Curve using ROCR library")
+```
+
+AS we can see both graph are same . So curve that we made is perfectly working fine.
+note- (indivisual cell is showing proper graph , we are facing problem in running all together, it is showing only one point)
